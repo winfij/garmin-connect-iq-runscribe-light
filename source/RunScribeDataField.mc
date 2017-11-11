@@ -103,10 +103,10 @@ class RunScribeDataField extends Ui.DataField {
 	        mCurrentBGFieldRight = createField("BrakingGs_R", 6, Fit.DATA_TYPE_FLOAT, d);
 	        mCurrentIGFieldRight = createField("ImpactGs_R", 7, Fit.DATA_TYPE_FLOAT, d);
 	        mCurrentBGFieldLeft = createField("BrakingGs_L", 0 + offset, Fit.DATA_TYPE_FLOAT, d);
-    	    		mCurrentIGFieldLeft = createField("ImpactGs_L", 1 + offset, Fit.DATA_TYPE_FLOAT, d);
+    	    mCurrentIGFieldLeft = createField("ImpactGs_L", 1 + offset, Fit.DATA_TYPE_FLOAT, d);
         } else {
 	        mCurrentBGFieldLeft = createField("BrakingGs", 0 + offset, Fit.DATA_TYPE_FLOAT, d);
-    	    		mCurrentIGFieldLeft = createField("ImpactGs", 1 + offset, Fit.DATA_TYPE_FLOAT, d);
+    	    mCurrentIGFieldLeft = createField("ImpactGs", 1 + offset, Fit.DATA_TYPE_FLOAT, d);
         }	
         
         d[units] = "°";        
@@ -142,6 +142,8 @@ class RunScribeDataField extends Ui.DataField {
         
         var antRate = app.getProperty("antRate");
         mMesgPeriod = 8192/Math.pow(2, antRate);        
+    	System.print("mMesgPeriod = ");
+    	System.println(mMesgPeriod);
         
         var name = "typeMetric";
         mMetric1Type = app.getProperty(name + "1");
@@ -177,79 +179,137 @@ class RunScribeDataField extends Ui.DataField {
         mUpdateLayout = 1;
     }
     
-    function compute(info) {
+    // If L/R recording is enabled, store values in appropriate result.
+    // If L/R recording is disabled and both left and right are valid, store the average in left result.
+    // If L/R recording is disabled but only one value is valid, store that in the left result.
+    function storeValues(leftValue, rightValue, resultFieldLeft, resultFieldRight) {
+    	if (mCurrentBGFieldRight != null) {
+	    	System.print("Stored leftValue:");
+	    	System.print(leftValue);
+	    	System.print(" rightValue:");
+	    	System.println(rightValue);
+    		resultFieldLeft.setData(leftValue);
+    		resultFieldRight.setData(rightValue);
+    	}
+    	else if (!mSensorLeft.searching && !mSensorRight.searching) {
+    		resultFieldLeft.setData((leftValue + rightValue) / 2);
+	    	System.print("Stored avgValue:");
+	    	System.println((leftValue + rightValue) / 2);
+    	}
+    	else
+    	{
+    		resultFieldLeft.setData(mSensorLeft.searching?rightValue:leftValue);
+	    	System.print("Stored value:");
+	    	System.println(mSensorLeft.searching?rightValue:leftValue);
+    	}
+    }
     
-        if (mSensorLeft == null || !mSensorLeft.isChannelOpen) {
-            mSensorLeft = null;
+    function compute(info) {
+    	System.println("Called compute()");
+
+		// Elem[0]=left Elem[1]=right
+        var braking = new[2];
+        var impact = new[2];
+        var footstrike = new[2];
+        var pronation = new[2];
+        var flight = new[2];
+        var contact = new[2];
+        var power = new[2];
+
+        if (mSensorLeft == null) {
+	    	System.println("Instantiating left sensor");
             try {
                 mSensorLeft = new RunScribeSensor(11, 62, mMesgPeriod);
             } catch(e instanceof Ant.UnableToAcquireChannelException) {
                 mSensorLeft = null;
             }
-        } else {
+        }
+        if (mSensorLeft != null) {
+			if (!mSensorLeft.isChannelOpen) {
+		    	System.println("Opening left sensor");
+	            mSensorLeft.openChannel();
+			}
 
             ++mSensorLeft.idleTime;
-			if (mSensorLeft.idleTime > 8) {
-    				mSensorLeft.closeChannel();
+			if (mSensorLeft.searching || mSensorLeft.idleTime > 4) {
+		    	System.println("Stale data for left sensor");
+    			mSensorLeft.searching = true;
+		        braking[0] = 0;
+		        impact[0] = 0;
+		        footstrike[0] = 0;
+		        pronation[0] = 0;
+		        flight[0] = 0;
+		        contact[0] = 0;
+		        power[0] = 0;
+			} else {
+	            braking[0] = mSensorLeft.braking_gs;
+	            impact[0] = mSensorLeft.impact_gs;
+	            footstrike[0] = mSensorLeft.footstrike_type;
+	            pronation[0] = mSensorLeft.pronation_excursion_fs_mp;
+	            flight[0] = mSensorLeft.flight_ratio;
+	            contact[0] = mSensorLeft.contact_time;
+	            power[0] = mSensorLeft.power;
 			}
-        
-            var braking = mSensorLeft.braking_gs;
-            var impact = mSensorLeft.impact_gs;
-            var footstrike = mSensorLeft.footstrike_type;
-            var pronation = mSensorLeft.pronation_excursion_fs_mp;
-            var flight = mSensorLeft.flight_ratio;
-            var contact = mSensorLeft.contact_time;
- 
-            // If no right field then taking averages !!
-            if (mCurrentBGFieldRight == null && mSensorRight != null) {
-                // Average left / right recording
-                braking = (braking + mSensorRight.braking_gs) * 0.5;
-                impact = (impact + mSensorRight.impact_gs) * 0.5;
-                footstrike = (footstrike + mSensorRight.footstrike_type) * 0.5;
-                pronation = (pronation + mSensorRight.pronation_excursion_fs_mp) * 0.5;
-                flight = (flight + mSensorRight.flight_ratio) * 0.5;
-                contact = (contact + mSensorRight.contact_time) * 0.5;
-            }
-                            
-            mCurrentBGFieldLeft.setData(braking);
-            mCurrentIGFieldLeft.setData(impact);
-            mCurrentFSFieldLeft.setData(footstrike);
-            mCurrentPronationFieldLeft.setData(pronation);
-            mCurrentFlightFieldLeft.setData(flight);
-            mCurrentGCTFieldLeft.setData(contact);
-            
-            if (mSensorRight != null) {
-                mCurrentPowerField.setData((mSensorLeft.power + mSensorRight.power) * 0.5);
-            }
         }
         
-        if (mSensorRight == null || !mSensorRight.isChannelOpen) {
-            mSensorRight = null;
+        if (mSensorRight == null) {
+	    	System.println("Instantiating right sensor");
             try {
                 mSensorRight = new RunScribeSensor(12, 64, mMesgPeriod);
             } catch(e instanceof Ant.UnableToAcquireChannelException) {
                 mSensorRight = null;
             }
-        } else {
-
-            ++mSensorRight.idleTime;
-            if (mSensorRight.idleTime > 7) {
-                mSensorRight.closeChannel();
-            }
-            
-            if (mCurrentBGFieldRight != null) {
-                // Separate left / right recording
-	            mCurrentBGFieldRight.setData(mSensorRight.braking_gs);
-	            mCurrentIGFieldRight.setData(mSensorRight.impact_gs);
-	            mCurrentFSFieldRight.setData(mSensorRight.footstrike_type);
-	            mCurrentPronationFieldRight.setData(mSensorRight.pronation_excursion_fs_mp);
-	            mCurrentFlightFieldRight.setData(mSensorRight.flight_ratio);
-	            mCurrentGCTFieldRight.setData(mSensorRight.contact_time);
-	       }
         }
+        if (mSensorRight != null) {
+			if (!mSensorRight.isChannelOpen) {
+		    	System.println("Opening right sensor");
+	            mSensorRight.openChannel();
+			}
+			
+            ++mSensorRight.idleTime;
+			if (mSensorRight.searching || mSensorRight.idleTime > 4) {
+		    	System.println("Stale data for right sensor");
+    			mSensorRight.searching = true;
+		        braking[1] = 0;
+		        impact[1] = 0;
+		        footstrike[1] = 0;
+		        pronation[1] = 0;
+		        flight[1] = 0;
+		        contact[1] = 0;
+		        power[1] = 0;
+			} else {
+	            braking[1] = mSensorRight.braking_gs;
+	            impact[1] = mSensorRight.impact_gs;
+	            footstrike[1] = mSensorRight.footstrike_type;
+	            pronation[1] = mSensorRight.pronation_excursion_fs_mp;
+	            flight[1] = mSensorRight.flight_ratio;
+	            contact[1] = mSensorRight.contact_time;
+	            power[1] = mSensorRight.power;
+			}
+        }
+
+		// Store the computed results to the Connect datafields
+	    storeValues(braking[0], braking[1], mCurrentBGFieldLeft, mCurrentBGFieldRight);
+	    storeValues(impact[0], impact[1], mCurrentIGFieldLeft, mCurrentIGFieldRight);
+	    storeValues(footstrike[0], footstrike[1], mCurrentFSFieldLeft, mCurrentFSFieldRight);
+	    storeValues(pronation[0], pronation[1], mCurrentPronationFieldLeft, mCurrentPronationFieldRight);
+	    storeValues(flight[0], flight[1], mCurrentFlightFieldLeft, mCurrentFlightFieldRight);
+	    storeValues(contact[0], contact[1], mCurrentGCTFieldLeft, mCurrentGCTFieldRight);
+
+		// Treat power differently, only ever record a single value
+		if (!mSensorLeft.searching && !mSensorRight.searching) {
+			// Store the average
+    		mCurrentPowerField.setData((power[0] + power[1]) / 2);
+		}
+		else {
+			// Pick the valid value
+    		mCurrentPowerField.setData(mSensorLeft.searching?power[1]:power[0]);
+		}
     }
 
     function onLayout(dc) {
+    	System.println("Called onLayout()");
+
         var width = dc.getWidth();
         var height = dc.getHeight();
         
@@ -306,26 +366,28 @@ class RunScribeDataField extends Ui.DataField {
     }
     
     hidden function getMetricName(metricType) {
-        if (metricType == 1) {
-            return "Impact Gs";
-        } 
-        if (metricType == 2) {
-            return "Braking Gs";
-        } 
-        if (metricType == 3) {
-            return "Footstrike";
-        } 
-        if (metricType == 4) {
-            return "Pronation";
-        } 
-        if (metricType == 5) {
-            return "Flight (%)";
-        } 
-        if (metricType == 6) {
-            return "GCT (ms)";
-        } 
-        if (metricType == 7) {
-            return "Power (W)";
+    	switch (metricType) {
+            case 1 : {
+	            return "Impact Gs";
+            } 
+            case 2 : {
+    	        return "Braking Gs";
+            } 
+            case 3 : {
+	            return "Footstrike";
+            } 
+            case 4 : {
+	            return "Pronation";
+            } 
+            case 5 : {
+	            return "Flight (%)";
+            } 
+            case 6 : {
+	            return "GCT (ms)";
+            } 
+            case 7 : {
+	            return "Power (W)";
+            } 
         }
         
         return null;
@@ -334,24 +396,29 @@ class RunScribeDataField extends Ui.DataField {
     hidden function getMetric(metricType, sensor) {
         var floatFormat = "%.1f";
         if (sensor != null) {
-            if (metricType == 1) {
-                return sensor.impact_gs.format(floatFormat);
-            } 
-            if (metricType == 2) {
-                return sensor.braking_gs.format(floatFormat);
-            } 
-            if (metricType == 3) {
-                return sensor.footstrike_type.format("%d");
-            } 
-            if (metricType == 4) {
-                return sensor.pronation_excursion_fs_mp.format(floatFormat);
-            } 
-            if (metricType == 5) {
-                return sensor.flight_ratio.format(floatFormat);
-            } 
-            if (metricType == 6) {
-                return sensor.contact_time.format("%d");
-            }
+        	switch (metricType) {
+	            case 1 : {
+	                return sensor.impact_gs.format(floatFormat);
+	            } 
+	            case 2 : {
+	                return sensor.braking_gs.format(floatFormat);
+	            } 
+	            case 3 : {
+	                return sensor.footstrike_type.format("%d");
+	            } 
+	            case 4 : {
+	                return sensor.pronation_excursion_fs_mp.format(floatFormat);
+	            } 
+	            case 5 : {
+	                return sensor.flight_ratio.format(floatFormat);
+	            } 
+	            case 6 : {
+	                return sensor.contact_time.format("%d");
+	            }
+	            case 7 : {
+	                return sensor.power.format("%d");
+	            }
+	        }
         }
         return "0";
     }
@@ -359,6 +426,8 @@ class RunScribeDataField extends Ui.DataField {
     
     // Handle the update event
     function onUpdate(dc) {
+    	System.println("Called onUpdate()");
+
         var bgColor = getBackgroundColor();
         var fgColor = Gfx.COLOR_WHITE;
         
@@ -376,7 +445,7 @@ class RunScribeDataField extends Ui.DataField {
         }
 
         // Update status
-        if (mSensorLeft != null && mSensorRight != null && (mSensorRight.searching == 0 || mSensorLeft.searching == 0)) {
+        if (mSensorLeft != null && mSensorRight != null && (!mSensorRight.searching || !mSensorLeft.searching)) {
             
             var met1x, met1y, met2x = 0, met2y = 0, met3x = 0, met3y = 0, met4x = 0, met4y = 0;
             

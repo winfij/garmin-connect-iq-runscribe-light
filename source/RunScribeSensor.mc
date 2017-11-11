@@ -26,7 +26,7 @@ using Toybox.Ant as Ant;
 
 class RunScribeSensor extends Ant.GenericChannel {
 
-    var searching = 1;
+    var searching = true;
 
     //  Page 0 - Efficiency
     //  FS                      Encoded         1       FS Type         8 bits  [b7/b6 = FS Num % 4, b5=L/R, b4=H/L, b3-b0=FS Type]
@@ -69,22 +69,29 @@ class RunScribeSensor extends Ant.GenericChannel {
             	:transmissionType => 1,
             	:messagePeriod => rsMesgPeriod,
             	:radioFrequency => rsFreq,          // ANT RS Frequency
-            	:searchTimeoutLowPriority => 2,    // Timeout in 2.5s (25sec)
-            	:searchTimeoutHighPriority => 0,    // Timeout in 2.5s (5sec)
+            	:searchTimeoutLowPriority => 6,     // Timeout in 2.5s steps
+            	:searchTimeoutHighPriority => 0,    // Timeout in 2.5s steps (0 = disabled)
             	:searchThreshold => 0} )            // Farthest        
         );
         
+		me.openChannel();
+    }
+    
+    function openChannel() {
 		isChannelOpen = GenericChannel.open();
-        searching = 1;
-        idleTime = 0;
+		if (isChannelOpen)
+		{
+		   	System.println("Sensor ANT channel is open");
+		}
+        searching = true;
+        idleTime = -1; // Force immediate data refresh
     }
     
     function closeChannel() {
-		if (isChannelOpen) {
-			GenericChannel.release();
-			isChannelOpen = false;
-			searching = 1;
-		}	    
+		System.println("Sensor ANT channel closing");
+		GenericChannel.close();
+		isChannelOpen = false;
+		searching = true;
     }
     
     function onMessage(msg) {
@@ -92,11 +99,8 @@ class RunScribeSensor extends Ant.GenericChannel {
         var payload = msg.getPayload();
         
         if (Ant.MSG_ID_BROADCAST_DATA == msg.messageId) {
-            // Were we searching?
-            if (searching == 1) {
-                searching = 0;
-            }
-            if (idleTime >= 0) {
+            searching = false;
+            if (idleTime > 0) {
                 var page = (payload[0] & 0xFF);
 				if (page > 0x0F) {
 			        footstrike_type = payload[0] & 0x0F + 1;
@@ -106,7 +110,7 @@ class RunScribeSensor extends Ant.GenericChannel {
 			        flight_ratio = ((((payload[7] & 0x0C) << 6) + payload[4])- 224.0) / 8.0;
 			        power = ((payload[7] & 0x30) << 4) + payload[5];
 			        pronation_excursion_fs_mp = ((((payload[7] & 0xC0) << 2) + payload[6]) - 512.0) / 10.0;
-                    idleTime = -1;
+                    idleTime = 0;
 	            }
 	        }
         } else if (Ant.MSG_ID_CHANNEL_RESPONSE_EVENT == msg.messageId) {
