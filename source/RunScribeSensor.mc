@@ -69,29 +69,22 @@ class RunScribeSensor extends Ant.GenericChannel {
             	:transmissionType => 1,
             	:messagePeriod => rsMesgPeriod,
             	:radioFrequency => rsFreq,          // ANT RS Frequency
-            	:searchTimeoutLowPriority => 6,     // Timeout in 2.5s steps
-            	:searchTimeoutHighPriority => 0,    // Timeout in 2.5s steps (0 = disabled)
+            	:searchTimeoutLowPriority => 2,     // Timeout in 2.5s increments
+            	:searchTimeoutHighPriority => 0,    // Timeout in 2.5s increments (0 = disabled)
             	:searchThreshold => 0} )            // Farthest        
         );
         
-		me.openChannel();
-    }
-    
-    function openChannel() {
 		isChannelOpen = GenericChannel.open();
-		if (isChannelOpen)
-		{
-		   	System.println("Sensor ANT channel is open");
-		}
         searching = true;
-        idleTime = -1; // Force immediate data refresh
+        idleTime = 0;
     }
     
     function closeChannel() {
-		System.println("Sensor ANT channel closing");
-		GenericChannel.close();
-		isChannelOpen = false;
-		searching = true;
+		if (isChannelOpen) {
+			GenericChannel.release();
+			isChannelOpen = false;
+			searching = true;
+		}	    
     }
     
     function onMessage(msg) {
@@ -100,7 +93,7 @@ class RunScribeSensor extends Ant.GenericChannel {
         
         if (Ant.MSG_ID_BROADCAST_DATA == msg.messageId) {
             searching = false;
-            if (idleTime > 0) {
+            if (idleTime >= 0) {
                 var page = (payload[0] & 0xFF);
 				if (page > 0x0F) {
 			        footstrike_type = payload[0] & 0x0F + 1;
@@ -110,7 +103,7 @@ class RunScribeSensor extends Ant.GenericChannel {
 			        flight_ratio = ((((payload[7] & 0x0C) << 6) + payload[4])- 224.0) / 8.0;
 			        power = ((payload[7] & 0x30) << 4) + payload[5];
 			        pronation_excursion_fs_mp = ((((payload[7] & 0xC0) << 2) + payload[6]) - 512.0) / 10.0;
-                    idleTime = 0;
+                    idleTime = -1;
 	            }
 	        }
         } else if (Ant.MSG_ID_CHANNEL_RESPONSE_EVENT == msg.messageId) {
