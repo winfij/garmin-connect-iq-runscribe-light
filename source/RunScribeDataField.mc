@@ -389,9 +389,6 @@ class RunScribeDataField extends Ui.DataField {
 	            case 6 : {
 	                return sensor.contact_time.format("%d");
 	            }
-	            case 7 : {
-	                return sensor.power.format("%d");
-	            }
 	        }
         }
         return "0";
