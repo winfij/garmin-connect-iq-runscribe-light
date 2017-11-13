@@ -186,8 +186,8 @@ class RunScribeDataField extends Ui.DataField {
 	    	System.print(leftValue);
 	    	System.print(" rightValue:");
 	    	System.println(rightValue);*/
-    		resultFieldLeft.setData(leftValue);
-    		resultFieldRight.setData(rightValue);
+    		resultFieldLeft.setData(leftValid?leftValue:0);
+    		resultFieldRight.setData(rightValid?rightValue:0);
     	}
     	else if (leftValid && rightValid) {
     		resultFieldLeft.setData((leftValue + rightValue) / 2);
